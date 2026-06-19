@@ -1,0 +1,98 @@
+Business Source License 1.1
+
+License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
+"Business Source License" is a trademark of MariaDB Corporation Ab.
+
+-----------------------------------------------------------------------------
+
+Parameters
+
+Licensor:             MoonSh
+Licensed Work:        KX Language Specification
+                      The Licensed Work is (c) 2026 MoonSh
+Change Date:          June 19, 2036 (Ten years from the patent application date).
+Change License:       Apache License, Version 2.0
+
+Additional Use Grant: Dokdo (a KX-based dynamic SQL builder for Go,
+                      available at https://github.com/luna-kx/dokdo),
+                      created by the author of the KX Language Specification,
+                      is granted a perpetual license to use the Licensed Work.
+
+                      Any person may use Dokdo freely, including for
+                      commercial purposes, without restriction.
+
+                      However, the creation and distribution of software
+                      that implements, parses, interprets, or compiles the
+                      KX Language Specification — other than Dokdo — requires
+                      a separate commercial license from the Licensor.
+                      This includes, but is not limited to, dynamic SQL
+                      builders, query template engines, and any similar tools
+                      that use or are derived from the KX syntax.
+
+-----------------------------------------------------------------------------
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production use of the Licensed Work. The
+Licensor may make an Additional Use Grant, above, permitting limited
+production use.
+
+Effective on the Change Date, the Licensor hereby grants you rights under
+the terms of the Change License (Apache License, Version 2.0), and these
+rights replace the above-specified terms.
+
+If your use of the Licensed Work does not comply with the requirements
+currently in effect as described in this License, you must purchase a
+commercial license from the Licensor, its affiliated entities, or authorized
+resellers, or you must refrain from using the Licensed Work.
+
+-----------------------------------------------------------------------------
+
+Permitted Use
+
+The following uses of the Licensed Work are permitted without a separate
+commercial license:
+
+  1. Use through Dokdo (the official KX-based SQL builder) — freely permitted
+     for any purpose, including commercial use, without restriction.
+
+  2. Any personal, educational, or research use of the KX Language
+     Specification that does not result in a distributed product.
+
+All other uses require a separate commercial license from the Licensor.
+
+-----------------------------------------------------------------------------
+
+Prohibited Uses (Examples, not exhaustive)
+
+The following uses require a separate commercial license:
+
+  - Any software that parses, interprets, compiles, or executes the KX
+    Language Specification, other than Dokdo (including but not limited to:
+    dynamic SQL builders, query template engines, document format engines,
+    and any tools implementing KX syntax)
+
+  - Any commercial service or product implementing KX syntax outside of
+    the permitted use conditions described above
+
+  - Forking Dokdo and distributing it as a competing KX-based SQL builder
+    under a different name or brand
+
+-----------------------------------------------------------------------------
+
+All copies of the original and modified Licensed Work, and derivative works
+of the Licensed Work, are subject to this License. This License applies
+separately for each version of the Licensed Work.
+
+You must conspicuously display this License on each original or modified
+copy of the Licensed Work.
+
+Any use of the Licensed Work in violation of this License will automatically
+terminate your rights under this License.
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
+AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
+EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
+ANY WARRANTIES ARISING OUT OF COURSE OF DEALING OR USAGE OF TRADE.
