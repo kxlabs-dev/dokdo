@@ -1,4 +1,4 @@
-# Dokdo
+# Dok(trin)do
 
 **Go를 위한 동적 SQL 빌더 — KX 템플릿 문법 기반**
 
@@ -19,21 +19,21 @@ conn.Query(ctx, sql, args...)           // pgx
 
 ---
 
-## 왜 Dokdo인가
+## 왜 Dok(trin)do인가?
 
-Go의 동적 쿼리 생태계는 파편화되어 있습니다. 문자열 이어붙이기는 위험하고, ORM은 SQL을 숨기고, 쿼리 빌더는 로직을 메서드 체인으로 분산시킵니다. Go를 위한 MyBatis가 없었습니다 — 지금까지는.
+Go의 동적 쿼리 생태계는 파편화되어 있습니다. 문자열 이어붙이기는 위험하고, ORM은 SQL을 숨기고, 쿼리 빌더는 로직을 메서드 체인으로 분산시킵니다.
 
-Dokdo는 SQL을 `.kx` 파일에서 관리하고, 앱 시작 시 파라미터 struct를 검증하며, SQL 인젝션을 구조적으로 차단합니다.
+Dokdo는 원칙대로만 실행하는 동적 SQL 빌더입니다 — 선언된 것만, 그 이상도 이하도 없이. SQL을 `.kx` 파일에서 MyBatis보다 쉽고 유연하게 작성하고, 앱 시작 시 파라미터 struct를 검증하며, SQL 인젝션을 구조적으로 차단합니다.
 
 ---
 
 ## 설치
 
 ```bash
-go get github.com/luna-kx/dokdo
+go get github.com/kxlabs-dev/dokdo
 ```
 
-Go 1.21 이상 필요
+Go 1.22 이상 필요
 
 ---
 

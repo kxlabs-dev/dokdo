@@ -1,4 +1,4 @@
-# Dokdo
+# Dok(trin)do
 
 **Dynamic SQL builder for Go — powered by KX template syntax.**
 
@@ -19,21 +19,21 @@ conn.Query(ctx, sql, args...)           // pgx
 
 ---
 
-## Why Dokdo
+## Why Dok(trin)do?
 
-Go's dynamic query story is fragmented. String concatenation is unsafe. ORMs hide SQL. Query builders scatter logic across method chains. There was no MyBatis for Go — until now.
+Go's dynamic query story is fragmented. String concatenation is unsafe. ORMs hide SQL. Query builders scatter logic across method chains.
 
-Dokdo keeps SQL in `.kx` files where it belongs, validates your parameter structs at startup, and blocks SQL injection structurally — not after the fact.
+Dokdo is a declaration-driven SQL builder — execute only what is declared, nothing more. SQL stays in `.kx` files, easier and more flexible than MyBatis. Parameter structs are validated at startup. SQL injection is blocked structurally, not after the fact.
 
 ---
 
 ## Installation
 
 ```bash
-go get github.com/luna-kx/dokdo
+go get github.com/kxlabs-dev/dokdo
 ```
 
-Requires Go 1.21+
+Requires Go 1.22+
 
 ---
 
