@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -40,23 +39,23 @@ func validateRaw(val string) (string, error) {
 		inner := val[1 : len(val)-1]
 		upper := strings.ToUpper(strings.TrimSpace(inner))
 		if blocklist[upper] {
-			return "", fmt.Errorf("runtime error: blocked SQL keyword: %s", inner)
+			return "", &RuntimeError{Message: "blocked SQL keyword: " + inner}
 		}
 		return val, nil
 	}
 
 	if !rawPattern.MatchString(val) {
-		return "", fmt.Errorf("runtime error: invalid identifier: %s", val)
+		return "", &RuntimeError{Message: "invalid identifier: " + val}
 	}
 
 	upper := strings.ToUpper(val)
 
 	if blocklist[upper] {
-		return "", fmt.Errorf("runtime error: blocked SQL keyword: %s", val)
+		return "", &RuntimeError{Message: "blocked SQL keyword: " + val}
 	}
 
 	if allowlist[upper] {
-		return "", fmt.Errorf("runtime error: reserved word requires backtick: `%s`", val)
+		return "", &RuntimeError{Message: "reserved word requires backtick: `" + val + "`"}
 	}
 
 	return val, nil

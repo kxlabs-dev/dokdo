@@ -5,19 +5,17 @@ import "strings"
 type TokenType int
 
 const (
-	TAG_OPEN     TokenType = iota
-	TAG_CLOSE              // </>
-	SET_BLOCK              // set:{ ... }
-	PARAM_REF              // set:{ paramName }
-	EXPR_OPEN              // [[
-	EXPR_CLOSE             // ]]
-	BIND                   // #{ path }
-	RAW                    // ${ path }
+	TAG_OPEN    TokenType = iota
+	TAG_CLOSE             // </>
+	PARAM_REF             // set:{ paramName }
+	EXPR_OPEN             // [[
+	EXPR_CLOSE            // ]]
+	BIND                  // #{ path }
+	RAW                   // ${ path }
 	SQL_TEXT
-	COMMENT
-	WHERE_TAG // <where>
-	ESCAPE    // \< \> \<= \>= !=
-	BLOCK_CLOSE  // }
+	WHERE_TAG   // <where>
+	ESCAPE      // \< \> \<= \>= !=
+	BLOCK_CLOSE // }
 	EOF
 )
 

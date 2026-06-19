@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/kxlabs-dev/dokdo/parser"
+	"github.com/kxlabs-dev/dokdo/internal/parser"
 )
 
 func (b *Builder) buildForList(n *parser.ForNode, rv reflect.Value, params interface{}) error {

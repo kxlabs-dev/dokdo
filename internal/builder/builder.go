@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/kxlabs-dev/dokdo/parser"
+	"github.com/kxlabs-dev/dokdo/internal/parser"
 )
 
 type Builder struct {
@@ -113,7 +113,7 @@ func (b *Builder) buildFor(n *parser.ForNode, params interface{}) error {
 		return err
 	}
 	if rv.Kind() != reflect.Slice {
-		return fmt.Errorf("runtime error: '%s' is not a slice", n.Collection)
+		return &RuntimeError{Message: fmt.Sprintf("'%s' is not a slice", n.Collection)}
 	}
 	return b.buildForList(n, rv, params)
 }
@@ -135,7 +135,7 @@ func evalCond(cond string, params interface{}) (bool, error) {
 		}
 	}
 	if !found {
-		return false, fmt.Errorf("runtime error: invalid condition: %s", cond)
+		return false, &RuntimeError{Message: "invalid condition: " + cond}
 	}
 
 	lhsRaw, err := resolveValue(lhsStr, params)
@@ -163,7 +163,7 @@ func evalCond(cond string, params interface{}) (bool, error) {
 		case "<>":
 			return !isNil, nil
 		default:
-			return false, fmt.Errorf("runtime error: operator %s not valid for nil comparison", op)
+			return false, &RuntimeError{Message: "operator " + op + " not valid for nil comparison"}
 		}
 	}
 
@@ -207,7 +207,7 @@ func evalCond(cond string, params interface{}) (bool, error) {
 		return lhsStr2 != rhsStr, nil
 	}
 
-	return false, fmt.Errorf("runtime error: cannot compare %q %s %q", lhsStr, op, rhsStr)
+	return false, &RuntimeError{Message: fmt.Sprintf("cannot compare %q %s %q", lhsStr, op, rhsStr)}
 }
 
 func toFloat64(v interface{}) (float64, error) {
@@ -220,7 +220,7 @@ func toFloat64(v interface{}) (float64, error) {
 	case reflect.Float32, reflect.Float64:
 		return rv.Float(), nil
 	default:
-		return 0, fmt.Errorf("runtime error: cannot convert %T to number", v)
+		return 0, &RuntimeError{Message: fmt.Sprintf("cannot convert %T to number", v)}
 	}
 }
 
@@ -241,19 +241,19 @@ func resolveValue(path string, params interface{}) (interface{}, error) {
 		case reflect.Struct:
 			rv = rv.FieldByName(titleCase(part))
 			if !rv.IsValid() {
-				return nil, fmt.Errorf("runtime error: field %q not found", part)
+				return nil, &RuntimeError{Message: fmt.Sprintf("field %q not found", part)}
 			}
 		case reflect.Map:
 			mv := rv.MapIndex(reflect.ValueOf(part))
 			if !mv.IsValid() {
-				return nil, fmt.Errorf("runtime error: key %q not found in map", part)
+				return nil, &RuntimeError{Message: fmt.Sprintf("key %q not found in map", part)}
 			}
 			rv = mv
 			if rv.Kind() == reflect.Interface {
 				rv = rv.Elem()
 			}
 		default:
-			return nil, fmt.Errorf("runtime error: cannot resolve %q on %s", part, rv.Kind())
+			return nil, &RuntimeError{Message: fmt.Sprintf("cannot resolve %q on %s", part, rv.Kind())}
 		}
 	}
 	if !rv.IsValid() {

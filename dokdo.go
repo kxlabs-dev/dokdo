@@ -1,16 +1,19 @@
 package dokdo
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 
-	"github.com/kxlabs-dev/dokdo/builder"
-	"github.com/kxlabs-dev/dokdo/parser"
+	"github.com/kxlabs-dev/dokdo/internal/builder"
+	"github.com/kxlabs-dev/dokdo/internal/parser"
 )
 
+// Dokdo holds parsed .kx queries and their associated Go type information.
+// Create one with Load and reuse it across the application's lifetime.
 type Dokdo struct {
 	queries map[string]*QueryEntry
 }
@@ -21,6 +24,10 @@ type QueryEntry struct {
 	File     string
 }
 
+// Load parses all .kx query files and their associated .go type files
+// under root, recursively. It should be called once at application startup.
+// Returns an error if a .kx file fails to parse, a referenced type is
+// missing or unexported, or a field uses an unsupported type.
 func Load(root string) (*Dokdo, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -103,6 +110,10 @@ func Load(root string) (*Dokdo, error) {
 	return &Dokdo{queries: queries}, nil
 }
 
+// Build assembles the SQL string and bound argument slice for the query
+// identified by target (format: "namespace#queryName"). params must be a
+// struct; passing a map returns InvalidParamsError. Build is safe for
+// concurrent use by multiple goroutines.
 func (d *Dokdo) Build(target string, params interface{}) (string, []interface{}, error) {
 	if strings.Index(target, "#") < 0 {
 		return "", nil, &TagNotFoundError{Target: target}
@@ -121,7 +132,19 @@ func (d *Dokdo) Build(target string, params interface{}) (string, []interface{},
 
 	sql, args, err := builder.Execute(entry.Node.Body, params, entry.TypeInfo)
 	if err != nil {
-		return "", nil, err
+		var tmErr *builder.TypeMismatchError
+		var rfErr *builder.RequiredFieldError
+		var rtErr *builder.RuntimeError
+		switch {
+		case errors.As(err, &tmErr):
+			return "", nil, &TypeMismatchError{Field: tmErr.Field, Expected: tmErr.Expected, Got: tmErr.Got}
+		case errors.As(err, &rfErr):
+			return "", nil, &RequiredFieldError{Field: rfErr.Field}
+		case errors.As(err, &rtErr):
+			return "", nil, &RuntimeError{Message: rtErr.Message}
+		default:
+			return "", nil, err
+		}
 	}
 	return sql, args, nil
 }

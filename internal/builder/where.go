@@ -3,7 +3,7 @@ package builder
 import (
 	"strings"
 
-	"github.com/kxlabs-dev/dokdo/parser"
+	"github.com/kxlabs-dev/dokdo/internal/parser"
 )
 
 func (b *Builder) buildWhere(n *parser.WhereNode, params interface{}) error {

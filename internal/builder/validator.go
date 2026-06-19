@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 )
@@ -12,8 +11,10 @@ func ValidateParams(params interface{}, info *TypeInfo) error {
 	}
 
 	rv := reflect.ValueOf(params)
+	// external/ 로 internal을 우회할 수 없으므로 이 체크는 모듈 내부 코드가
+	// ValidateParams를 검증 없이 직접 호출하는 실수를 막기 위한 방어 로직이다.
 	if rv.Kind() == reflect.Map {
-		return fmt.Errorf("invalid params: map type is not allowed, use struct")
+		return &RuntimeError{Message: "map type is not allowed, use struct"}
 	}
 
 	for rv.Kind() == reflect.Ptr {
@@ -50,21 +51,22 @@ func ValidateParams(params interface{}, info *TypeInfo) error {
 
 		if field.IsAnonSlice {
 			if goFieldType.Kind() != reflect.Slice {
-				return fmt.Errorf("type mismatch: field %s expected []struct got %s",
-					field.Name, goFieldType.String())
+				return &TypeMismatchError{Field: field.Name, Expected: "[]struct", Got: goFieldType.String()}
 			}
 			elemType := goFieldType.Elem()
 			if elemType.Kind() != reflect.Struct {
-				return fmt.Errorf("type mismatch: field %s expected []struct got []%s",
-					field.Name, elemType.String())
+				return &TypeMismatchError{Field: field.Name, Expected: "[]struct", Got: "[]" + elemType.String()}
 			}
 			for _, anonField := range field.AnonFields {
 				for i := 0; i < elemType.NumField(); i++ {
 					ef := elemType.Field(i)
 					if anonField.Name == ef.Name {
 						if ef.Type.String() != anonField.TypeStr {
-							return fmt.Errorf("type mismatch: field %s.%s expected %s got %s",
-								field.Name, anonField.Name, anonField.TypeStr, ef.Type.String())
+							return &TypeMismatchError{
+								Field:    field.Name + "." + anonField.Name,
+								Expected: anonField.TypeStr,
+								Got:      ef.Type.String(),
+							}
 						}
 						break
 					}
@@ -74,15 +76,14 @@ func ValidateParams(params interface{}, info *TypeInfo) error {
 		}
 
 		if goFieldType.String() != field.TypeStr {
-			return fmt.Errorf("type mismatch: field %s expected %s got %s",
-				field.Name, field.TypeStr, goFieldType.String())
+			return &TypeMismatchError{Field: field.Name, Expected: field.TypeStr, Got: goFieldType.String()}
 		}
 
 		if !field.Nullable {
 			kind := goFieldVal.Kind()
 			if kind == reflect.Ptr || kind == reflect.Interface {
 				if goFieldVal.IsNil() {
-					return fmt.Errorf("required field missing: %s", field.Name)
+					return &RequiredFieldError{Field: field.Name}
 				}
 			}
 		}
