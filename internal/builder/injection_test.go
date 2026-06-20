@@ -51,8 +51,13 @@ func TestInjection(t *testing.T) {
 		// ── 결함 F: 연속 하이픈 (SQL 주석 주입) ─────────────────────────────
 		{"F/SE--LECT", "SE--LECT", "consecutive hyphens not allowed", ""},
 		{"F/x--", "x--", "consecutive hyphens not allowed", ""},
-		{"F/--x", "--x", "consecutive hyphens not allowed", ""},
+		{"F/--x", "--x", "invalid identifier", ""},
 		{"F/a--b", "a--b", "consecutive hyphens not allowed", ""},
+
+		// ── 결함 G: 숫자로 시작하는 식별자 ──────────────────────────────────
+		{"G/digit-only", "1", "invalid identifier", ""},
+		{"G/float-like", "1.5", "invalid identifier", ""},
+		{"G/digit-alpha", "123abc", "invalid identifier", ""},
 
 		// ── 결함 E: 길이 제한 없음 ───────────────────────────────────────────
 		{"E/len-129", strings.Repeat("a", 129), "identifier too long", ""},

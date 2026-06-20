@@ -7,7 +7,7 @@ import (
 
 const maxIdentifierLen = 128
 
-var rawPattern = regexp.MustCompile(`^[a-zA-Z0-9_.\-]+$`)
+var rawPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.\-]*$`)
 
 var blocklist = map[string]bool{
 	"SELECT": true, "FROM": true, "WHERE": true,
