@@ -7,7 +7,7 @@ import (
 )
 
 func (b *Builder) buildWhere(n *parser.WhereNode, params interface{}) error {
-	buf := &Builder{}
+	buf := &Builder{dialect: b.dialect, argN: b.argN}
 	if err := buf.build(n.Children, params, false); err != nil {
 		return err
 	}

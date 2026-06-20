@@ -12,10 +12,20 @@ import (
 	"github.com/kxlabs-dev/dokdo/internal/parser"
 )
 
+type Dialect = builder.Dialect
+
+const (
+	DialectMySQL     = builder.DialectMySQL
+	DialectPostgres  = builder.DialectPostgres
+	DialectOracle    = builder.DialectOracle
+	DialectSQLServer = builder.DialectSQLServer
+)
+
 // Dokdo holds parsed .kx queries and their associated Go type information.
 // Create one with Load and reuse it across the application's lifetime.
 type Dokdo struct {
 	queries map[string]*QueryEntry
+	dialect Dialect
 }
 
 type QueryEntry struct {
@@ -28,7 +38,12 @@ type QueryEntry struct {
 // under root, recursively. It should be called once at application startup.
 // Returns an error if a .kx file fails to parse, a referenced type is
 // missing or unexported, or a field uses an unsupported type.
-func Load(root string) (*Dokdo, error) {
+func Load(root string, dialect ...Dialect) (*Dokdo, error) {
+	var d Dialect
+	if len(dialect) > 0 {
+		d = dialect[len(dialect)-1]
+	}
+
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -107,7 +122,7 @@ func Load(root string) (*Dokdo, error) {
 		return nil, err
 	}
 
-	return &Dokdo{queries: queries}, nil
+	return &Dokdo{queries: queries, dialect: d}, nil
 }
 
 // Build assembles the SQL string and bound argument slice for the query
@@ -130,7 +145,7 @@ func (d *Dokdo) Build(target string, params interface{}) (string, []interface{},
 		}
 	}
 
-	sql, args, err := builder.Execute(entry.Node.Body, params, entry.TypeInfo)
+	sql, args, err := builder.Execute(entry.Node.Body, params, entry.TypeInfo, d.dialect)
 	if err != nil {
 		var tmErr *builder.TypeMismatchError
 		var rfErr *builder.RequiredFieldError

@@ -10,9 +10,36 @@ import (
 	"github.com/kxlabs-dev/dokdo/internal/parser"
 )
 
+type Dialect uint8
+
+const (
+	DialectMySQL     Dialect = 0
+	DialectPostgres  Dialect = 1
+	DialectOracle    Dialect = 2
+	DialectSQLServer Dialect = 3
+)
+
 type Builder struct {
-	sql  strings.Builder
-	args []interface{}
+	sql     strings.Builder
+	args    []interface{}
+	dialect Dialect
+	argN    *int
+}
+
+func (b *Builder) placeholder() string {
+	switch b.dialect {
+	case DialectPostgres:
+		*b.argN++
+		return "$" + strconv.Itoa(*b.argN)
+	case DialectOracle:
+		*b.argN++
+		return ":" + strconv.Itoa(*b.argN)
+	case DialectSQLServer:
+		*b.argN++
+		return "@p" + strconv.Itoa(*b.argN)
+	default:
+		return "?"
+	}
 }
 
 func (b *Builder) build(nodes []parser.SQLNode, params interface{}, inFor bool) error {
@@ -25,7 +52,7 @@ func (b *Builder) build(nodes []parser.SQLNode, params interface{}, inFor bool) 
 			if err != nil {
 				return err
 			}
-			b.sql.WriteString("?")
+			b.sql.WriteString(b.placeholder())
 			b.args = append(b.args, val)
 		case *parser.RawParam:
 			val, err := resolveValue(n.Path, params)
@@ -322,13 +349,14 @@ func lowerFirst(s string) string {
 	return string(r)
 }
 
-func Execute(nodes []parser.SQLNode, params interface{}, info *TypeInfo) (string, []interface{}, error) {
+func Execute(nodes []parser.SQLNode, params interface{}, info *TypeInfo, dialect Dialect) (string, []interface{}, error) {
 	if info != nil {
 		if err := ValidateParams(params, info); err != nil {
 			return "", nil, err
 		}
 	}
-	b := &Builder{}
+	n := 0
+	b := &Builder{dialect: dialect, argN: &n}
 	if err := b.build(nodes, params, false); err != nil {
 		return "", nil, err
 	}

@@ -13,7 +13,7 @@ func (b *Builder) buildForList(n *parser.ForNode, rv reflect.Value, params inter
 
 	for i := 0; i < rv.Len(); i++ {
 		item := rv.Index(i).Interface()
-		buf := &Builder{}
+		buf := &Builder{dialect: b.dialect, argN: b.argN}
 		if err := buf.build(n.Body, itemScope(n.ItemVar, item, params), true); err != nil {
 			return err
 		}
