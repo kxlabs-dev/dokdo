@@ -48,6 +48,12 @@ func TestInjection(t *testing.T) {
 		// 백틱 내부 비ASCII
 		{"D/umlaut-backtick", "`über`", "non-ASCII character in identifier", ""},
 
+		// ── 결함 F: 연속 하이픈 (SQL 주석 주입) ─────────────────────────────
+		{"F/SE--LECT", "SE--LECT", "consecutive hyphens not allowed", ""},
+		{"F/x--", "x--", "consecutive hyphens not allowed", ""},
+		{"F/--x", "--x", "consecutive hyphens not allowed", ""},
+		{"F/a--b", "a--b", "consecutive hyphens not allowed", ""},
+
 		// ── 결함 E: 길이 제한 없음 ───────────────────────────────────────────
 		{"E/len-129", strings.Repeat("a", 129), "identifier too long", ""},
 		{"E/len-1000", strings.Repeat("b", 1000), "identifier too long", ""},

@@ -48,6 +48,9 @@ func validateRawInner(inner string) error {
 	if !rawPattern.MatchString(inner) {
 		return &RuntimeError{Message: "invalid identifier: " + inner}
 	}
+	if strings.Contains(inner, "--") {
+		return &RuntimeError{Message: "consecutive hyphens not allowed: " + inner}
+	}
 	for _, seg := range strings.FieldsFunc(inner, splitOnSeparator) {
 		if blocklist[strings.ToUpper(seg)] {
 			return &RuntimeError{Message: "blocked SQL keyword: " + inner}
@@ -77,6 +80,9 @@ func validateRaw(val string) (string, error) {
 		// 형식 검증
 		if !rawPattern.MatchString(val) {
 			return "", &RuntimeError{Message: "invalid identifier: " + val}
+		}
+		if strings.Contains(val, "--") {
+			return "", &RuntimeError{Message: "consecutive hyphens not allowed: " + val}
 		}
 		// A+C: 세그먼트별 blocklist 검사 ('.' 및 '-' 기준 분리)
 		for _, seg := range strings.FieldsFunc(val, splitOnSeparator) {
