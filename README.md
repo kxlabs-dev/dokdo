@@ -17,6 +17,8 @@ db.Select(&result, sql, args...)        // sqlx
 conn.Query(ctx, sql, args...)           // pgx
 ```
 
+`?` above is the default (MySQL/MariaDB) placeholder. Dokdo also supports PostgreSQL, Oracle, and SQL Server — see [Dialects](#dialects).
+
 ---
 
 ## Why Dok(trin)do?
@@ -91,11 +93,89 @@ sql, args, err := dq.Build("users#selectUser", UserParams{Name: &name})
 
 ---
 
+## Dialects
+
+`Load()` accepts an optional dialect argument controlling the placeholder format. Omitting it defaults to MySQL — existing `Load("query/")` calls keep working unchanged.
+
+```go
+dq, err := dokdo.Load("query/")                              // ? — MySQL/MariaDB (default)
+dq, err := dokdo.Load("query/", dokdo.DialectMySQL)           // ? — explicit
+dq, err := dokdo.Load("query/", dokdo.DialectPostgres)        // $1, $2, $3...
+dq, err := dokdo.Load("query/", dokdo.DialectOracle)          // :1, :2, :3...
+dq, err := dokdo.Load("query/", dokdo.DialectSQLServer)       // @p1, @p2, @p3...
+```
+
+The `args` slice returned by `Build()` stays positional regardless of dialect — all four drivers (`database/sql`, `pgx`, `go-ora`, `go-mssqldb`) accept ordinal argument slices, so no named-parameter wrapping is needed.
+
+Only the placeholder format is translated. SQL grammar differences across databases (`LIMIT`/`TOP`, `AUTO_INCREMENT`/`SERIAL`/`IDENTITY`, etc.) are out of scope — Dokdo is not an ORM and never rewrites your SQL text.
+
+### Usage by database
+
+Each example builds the same query and runs it through the driver typically used with that database. `database/sql` examples assume the matching driver is already imported for its side effects (e.g. `_ "github.com/go-sql-driver/mysql"`).
+
+**MySQL / MariaDB (go-sql-driver/mysql)**
+
+```go
+dq, _ := dokdo.Load("query/")   // DialectMySQL is the default
+
+sql, args, _ := dq.Build("users#selectUser", UserParams{Name: &name})
+rows, err := db.Query(sql, args...)   // db is *sql.DB opened with go-sql-driver/mysql
+```
+
+**PostgreSQL (pgx)**
+
+```go
+dq, _ := dokdo.Load("query/", dokdo.DialectPostgres)
+
+sql, args, _ := dq.Build("users#selectUser", UserParams{Name: &name})
+rows, err := db.Query(sql, args...)   // db is *sql.DB opened with pgx/stdlib, or a pgx.Conn
+```
+
+**Oracle (go-ora)**
+
+```go
+dq, _ := dokdo.Load("query/", dokdo.DialectOracle)
+
+sql, args, _ := dq.Build("users#selectUser", UserParams{Name: &name})
+rows, err := db.Query(sql, args...)   // db is *sql.DB opened with sijms/go-ora
+```
+
+**SQL Server (go-mssqldb)**
+
+```go
+dq, _ := dokdo.Load("query/", dokdo.DialectSQLServer)
+
+sql, args, _ := dq.Build("users#selectUser", UserParams{Name: &name})
+rows, err := db.Query(sql, args...)   // db is *sql.DB opened with microsoft/go-mssqldb
+```
+
+**GORM (gorm.io/gorm)**
+
+GORM works the same way for MySQL, PostgreSQL, and Oracle:
+
+```go
+dq, _ := dokdo.Load("query/", dokdo.DialectPostgres)   // or DialectMySQL / DialectOracle
+
+sql, args, _ := dq.Build("users#selectUser", UserParams{Name: &name})
+db.Raw(sql, args...).Scan(&result)
+```
+
+SQL Server is the one exception — load with `DialectMySQL` instead of `DialectSQLServer` when using GORM. See [Compatibility](#compatibility) for why.
+
+```go
+dq, _ := dokdo.Load("query/", dokdo.DialectMySQL)   // not DialectSQLServer
+
+sql, args, _ := dq.Build("users#selectUser", UserParams{Name: &name})
+db.Raw(sql, args...).Scan(&result)   // db is a *gorm.DB opened with gorm.io/driver/sqlserver
+```
+
+---
+
 ## KX Syntax
 
 ### Parameter binding — `#{}`
 
-Replaces with a `?` placeholder and appends the value to the argument slice.
+Replaces with a placeholder (`?`, `$N`, `:N`, or `@pN` depending on dialect) and appends the value to the argument slice.
 
 ```kx
 AND name = #{name}
@@ -297,13 +377,15 @@ The root tag in each `.kx` file must match the filename. Queries are addressed a
 
 ## API
 
-### `dokdo.Load(root string) (*Dokdo, error)`
+### `dokdo.Load(root string, dialect ...Dialect) (*Dokdo, error)`
 
 Call once at startup. Parses all `.kx` and `.go` files under `root`. Fails immediately with a descriptive error if a type is missing, unsupported, or unexported.
 
+`dialect` is optional and defaults to `DialectMySQL`. If multiple values are passed, the last one wins (standard Go variadic-options behavior — no error is raised). See [Dialects](#dialects).
+
 ### `(*Dokdo).Build(target string, params interface{}) (string, []interface{}, error)`
 
-Goroutine-safe. `params` must be a Go struct — maps are rejected. Returns the assembled SQL string and the ordered argument slice.
+Goroutine-safe. `params` must be a Go struct — maps are rejected. Returns the assembled SQL string and the ordered argument slice, using the placeholder format of the dialect the `*Dokdo` instance was loaded with.
 
 ---
 
@@ -323,7 +405,7 @@ Goroutine-safe. `params` must be a Go struct — maps are rejected. Returns the 
 
 ## Compatibility
 
-Dokdo returns `(string, []interface{})`. It works with any Go DB library that accepts positional arguments.
+Dokdo returns `(string, []interface{})`. It works with any Go DB library that accepts positional arguments. Verified end-to-end (real database round-trip, CRUD) against MySQL/MariaDB, PostgreSQL, Oracle, and SQL Server, through both raw drivers and GORM.
 
 | Library | Usage |
 |---------|-------|
@@ -331,6 +413,8 @@ Dokdo returns `(string, []interface{})`. It works with any Go DB library that ac
 | `sqlx` | `db.Select(&result, sql, args...)` |
 | `GORM` | `db.Raw(sql, args...).Scan(&result)` |
 | `pgx` | `conn.Query(ctx, sql, args...)` |
+
+**GORM + SQL Server:** load with `dokdo.DialectMySQL` (`?`), not `DialectSQLServer`. GORM's `Raw()`/`Exec()` routes any SQL containing `@` through its named-parameter path, which doesn't recognize positional `@p1`-style placeholders and silently drops the bound arguments. `go-mssqldb` accepts `?` directly, and GORM's `?` path binds arguments correctly — `DialectMySQL` is the working choice for GORM users on SQL Server. Using `database/sql`/`go-mssqldb` directly, `DialectSQLServer` works as expected.
 
 ---
 
