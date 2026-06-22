@@ -34,6 +34,10 @@ type QueryEntry struct {
 	File     string
 }
 
+func isWithinRoot(path, root string) bool {
+	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
+}
+
 // Load parses all .kx query files and their associated .go type files
 // under root, recursively. It should be called once at application startup.
 // Returns an error if a .kx file fails to parse, a referenced type is
@@ -64,18 +68,9 @@ func Load(root string, dialect ...Dialect) (*Dokdo, error) {
 		if err != nil {
 			return err
 		}
-		if !strings.HasPrefix(absPath, absRoot) {
+		if !isWithinRoot(absPath, absRoot) {
 			return &PathTraversalError{Path: path}
 		}
-
-		dir := filepath.Dir(absPath)
-		if _, ok := typeInfoCache[dir]; !ok {
-			typeInfoCache[dir], err = builder.ParseGoFiles(dir)
-			if err != nil {
-				return &BuildError{Message: err.Error()}
-			}
-		}
-		dirTypes := typeInfoCache[dir]
 
 		data, err := os.ReadFile(absPath)
 		if err != nil {
@@ -101,10 +96,24 @@ func Load(root string, dialect ...Dialect) (*Dokdo, error) {
 			var typeInfo *builder.TypeInfo
 			if q.ParamRef != "" {
 				parts := strings.SplitN(q.ParamRef, "#", 2)
-				typeNamePart := parts[len(parts)-1]
-				ti, ok := dirTypes[typeNamePart]
+				if len(parts) != 2 {
+					return &BuildError{Message: "invalid set:{} reference, expected 'path#TypeName': " + q.ParamRef}
+				}
+				pathPart, typeNamePart := parts[0], parts[1]
+				typeFilePath := filepath.Join(absRoot, pathPart+".go")
+				if !isWithinRoot(typeFilePath, absRoot) {
+					return &PathTraversalError{Path: pathPart}
+				}
+				if _, ok := typeInfoCache[typeFilePath]; !ok {
+					fileTypes, parseErr := builder.ParseGoFile(typeFilePath)
+					if parseErr != nil {
+						return &BuildError{Message: parseErr.Error()}
+					}
+					typeInfoCache[typeFilePath] = fileTypes
+				}
+				ti, ok := typeInfoCache[typeFilePath][typeNamePart]
 				if !ok {
-					return &BuildError{Message: "type not found: " + typeNamePart}
+					return &BuildError{Message: "type not found: " + typeNamePart + " in " + pathPart + ".go"}
 				}
 				typeInfo = ti
 			}

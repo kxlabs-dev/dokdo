@@ -5,8 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -52,102 +50,90 @@ func extractAnonStructFields(st *ast.StructType) []FieldInfo {
 	return fields
 }
 
-func ParseGoFiles(dir string) (map[string]*TypeInfo, error) {
+func ParseGoFile(path string) (map[string]*TypeInfo, error) {
 	result := make(map[string]*TypeInfo)
 
-	entries, err := os.ReadDir(dir)
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 
-	fset := token.NewFileSet()
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+	for _, decl := range f.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok {
 			continue
 		}
-
-		f, err := parser.ParseFile(fset, filepath.Join(dir, entry.Name()), nil, 0)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, decl := range f.Decls {
-			genDecl, ok := decl.(*ast.GenDecl)
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
 			if !ok {
 				continue
 			}
-			for _, spec := range genDecl.Specs {
-				typeSpec, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-				structType, ok := typeSpec.Type.(*ast.StructType)
-				if !ok {
-					continue
-				}
-				if !ast.IsExported(typeSpec.Name.Name) {
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			if !ast.IsExported(typeSpec.Name.Name) {
+				continue
+			}
+
+			info := &TypeInfo{Name: typeSpec.Name.Name}
+			for _, field := range structType.Fields.List {
+				if len(field.Names) == 0 {
 					continue
 				}
 
-				info := &TypeInfo{Name: typeSpec.Name.Name}
-				for _, field := range structType.Fields.List {
-					if len(field.Names) == 0 {
+				if arrType, ok := field.Type.(*ast.ArrayType); ok {
+					if anonSt, ok := arrType.Elt.(*ast.StructType); ok {
+						anonFields := extractAnonStructFields(anonSt)
+						for _, name := range field.Names {
+							if !ast.IsExported(name.Name) {
+								continue
+							}
+							info.Fields = append(info.Fields, FieldInfo{
+								Name:        name.Name,
+								IsAnonSlice: true,
+								AnonFields:  anonFields,
+							})
+						}
 						continue
 					}
-
-					if arrType, ok := field.Type.(*ast.ArrayType); ok {
-						if anonSt, ok := arrType.Elt.(*ast.StructType); ok {
-							anonFields := extractAnonStructFields(anonSt)
-							for _, name := range field.Names {
-								if !ast.IsExported(name.Name) {
-									continue
-								}
-								info.Fields = append(info.Fields, FieldInfo{
-									Name:        name.Name,
-									IsAnonSlice: true,
-									AnonFields:  anonFields,
-								})
-							}
-							continue
-						}
-						if ident, ok := arrType.Elt.(*ast.Ident); ok && !goPrimitives[ident.Name] {
-							for _, name := range field.Names {
-								if ast.IsExported(name.Name) {
-									return nil, fmt.Errorf(
-										"field '%s' uses unsupported type '[]%s'. Use anonymous struct slice '[]struct{...}' instead.",
-										name.Name, ident.Name,
-									)
-								}
-							}
-							continue
-						}
-					} else if _, ok := field.Type.(*ast.MapType); ok {
+					if ident, ok := arrType.Elt.(*ast.Ident); ok && !goPrimitives[ident.Name] {
 						for _, name := range field.Names {
 							if ast.IsExported(name.Name) {
 								return nil, fmt.Errorf(
-									"field '%s' uses unsupported type 'map'. Use anonymous struct slice '[]struct{...}' instead.",
-									name.Name,
+									"field '%s' uses unsupported type '[]%s'. Use anonymous struct slice '[]struct{...}' instead.",
+									name.Name, ident.Name,
 								)
 							}
 						}
 						continue
 					}
-
-					typeStr := exprToTypeStr(field.Type)
+				} else if _, ok := field.Type.(*ast.MapType); ok {
 					for _, name := range field.Names {
-						if !ast.IsExported(name.Name) {
-							continue
+						if ast.IsExported(name.Name) {
+							return nil, fmt.Errorf(
+								"field '%s' uses unsupported type 'map'. Use anonymous struct slice '[]struct{...}' instead.",
+								name.Name,
+							)
 						}
-						info.Fields = append(info.Fields, FieldInfo{
-							Name:     name.Name,
-							TypeStr:  typeStr,
-							Nullable: strings.HasPrefix(typeStr, "*"),
-						})
 					}
+					continue
 				}
-				result[info.Name] = info
+
+				typeStr := exprToTypeStr(field.Type)
+				for _, name := range field.Names {
+					if !ast.IsExported(name.Name) {
+						continue
+					}
+					info.Fields = append(info.Fields, FieldInfo{
+						Name:     name.Name,
+						TypeStr:  typeStr,
+						Nullable: strings.HasPrefix(typeStr, "*"),
+					})
+				}
 			}
+			result[info.Name] = info
 		}
 	}
 

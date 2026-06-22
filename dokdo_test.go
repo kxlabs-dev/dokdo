@@ -499,7 +499,7 @@ type DetailParams struct {
 `)
 	writeKX(t, dir, filepath.Join("users", "detail.kx"), `
 <detail>
-  <selectDetail set:{"detail#DetailParams"}>
+  <selectDetail set:{"users/detail#DetailParams"}>
     SELECT * FROM users WHERE id = #{id}
   </>
 </>
@@ -677,5 +677,213 @@ func TestPathTraversal(t *testing.T) {
 	_, err := dokdo.Load("../outside")
 	if err == nil {
 		t.Fatal("expected error for path traversal / non-existent path, got nil")
+	}
+}
+
+// ─────────────────────────────────────────
+// set:{} 경로 resolve 케이스 (v2.3)
+// ─────────────────────────────────────────
+
+func TestSetRef_PathTraversal(t *testing.T) {
+	dir, err := os.MkdirTemp("", "dokdo-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	writeKX(t, dir, "users.kx", `
+<users>
+  <selectUser set:{"../../etc/passwd#UserParams"}>
+    SELECT * FROM users
+  </>
+</>
+`)
+
+	_, err = dokdo.Load(dir)
+	if err == nil {
+		t.Fatal("expected PathTraversalError, got nil")
+	}
+	var target *dokdo.PathTraversalError
+	if !errors.As(err, &target) {
+		t.Errorf("error type: got %T (%v), want *dokdo.PathTraversalError", err, err)
+	}
+}
+
+func TestSetRef_SiblingDirBypass(t *testing.T) {
+	// root와 이름이 겹치는 형제 디렉토리(query-evil, queryFOO)는
+	// strings.HasPrefix만으로는 차단되지 않지만 isWithinRoot로 차단된다.
+	root, err := os.MkdirTemp("", "query")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+
+	// root 이름과 접두어가 겹치는 형제 디렉토리 두 개 생성
+	sibling1 := root + "-evil"
+	sibling2 := root + "FOO"
+	for _, s := range []string{sibling1, sibling2} {
+		if err := os.MkdirAll(s, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(s)
+	}
+
+	// 형제 디렉토리를 가리키는 상대경로를 set:{}에 사용
+	// root가 /tmp/queryXXX 이고 형제가 /tmp/queryXXX-evil 이면
+	// pathPart를 "../queryXXX-evil/shared" 형태로 지정
+	rootBase := filepath.Base(root)
+	evilBase := filepath.Base(sibling1)
+	relPath := "../" + evilBase + "/shared"
+
+	writeGo(t, sibling1, "shared.go", `
+package shared
+
+type SharedParams struct {
+	Id int64
+}
+`)
+	writeKX(t, root, "users.kx", `
+<users>
+  <selectUser set:{"`+relPath+`#SharedParams"}>
+    SELECT * FROM users WHERE id = #{id}
+  </>
+</>
+`)
+	_ = rootBase
+
+	_, err = dokdo.Load(root)
+	if err == nil {
+		t.Fatal("expected PathTraversalError for sibling directory, got nil")
+	}
+	var target *dokdo.PathTraversalError
+	if !errors.As(err, &target) {
+		t.Errorf("error type: got %T (%v), want *dokdo.PathTraversalError", err, err)
+	}
+}
+
+func TestSetRef_FileNotFound(t *testing.T) {
+	dir, err := os.MkdirTemp("", "dokdo-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	writeKX(t, dir, "users.kx", `
+<users>
+  <selectUser set:{"nonexistent#UserParams"}>
+    SELECT * FROM users
+  </>
+</>
+`)
+
+	_, err = dokdo.Load(dir)
+	if err == nil {
+		t.Fatal("expected BuildError for missing .go file, got nil")
+	}
+	var target *dokdo.BuildError
+	if !errors.As(err, &target) {
+		t.Errorf("error type: got %T (%v), want *dokdo.BuildError", err, err)
+	}
+}
+
+func TestSetRef_TypeNotFound(t *testing.T) {
+	dir, err := os.MkdirTemp("", "dokdo-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	writeGo(t, dir, "users.go", `
+package query
+
+type UserParams struct {
+	Name *string
+}
+`)
+	writeKX(t, dir, "users.kx", `
+<users>
+  <selectUser set:{"users#NoSuchType"}>
+    SELECT * FROM users
+  </>
+</>
+`)
+
+	_, err = dokdo.Load(dir)
+	if err == nil {
+		t.Fatal("expected BuildError for missing type, got nil")
+	}
+	var target *dokdo.BuildError
+	if !errors.As(err, &target) {
+		t.Errorf("error type: got %T (%v), want *dokdo.BuildError", err, err)
+	}
+}
+
+func TestSetRef_NoHash(t *testing.T) {
+	dir, err := os.MkdirTemp("", "dokdo-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	writeKX(t, dir, "users.kx", `
+<users>
+  <selectUser set:{"justAName"}>
+    SELECT * FROM users
+  </>
+</>
+`)
+
+	_, err = dokdo.Load(dir)
+	if err == nil {
+		t.Fatal("expected BuildError for missing '#', got nil")
+	}
+	var target *dokdo.BuildError
+	if !errors.As(err, &target) {
+		t.Errorf("error type: got %T (%v), want *dokdo.BuildError", err, err)
+	}
+}
+
+func TestSetRef_Caching(t *testing.T) {
+	// 두 .kx 파일이 같은 .go 파일을 참조해도 Load()가 정상 성공하고
+	// 각각 올바른 타입을 가져오는지 확인한다.
+	dir, err := os.MkdirTemp("", "dokdo-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	writeGo(t, dir, "shared.go", `
+package query
+
+type SharedParams struct {
+	Name *string
+}
+`)
+	writeKX(t, dir, "users.kx", `
+<users>
+  <selectUser set:{"shared#SharedParams"}>
+    SELECT * FROM users WHERE name = #{name}
+  </>
+</>
+`)
+	writeKX(t, dir, "orders.kx", `
+<orders>
+  <selectOrder set:{"shared#SharedParams"}>
+    SELECT * FROM orders WHERE name = #{name}
+  </>
+</>
+`)
+
+	dq := mustLoad(t, dir)
+
+	type Params struct{ Name *string }
+	name := "kim"
+	p := Params{Name: &name}
+
+	if _, _, err := dq.Build("users#selectUser", p); err != nil {
+		t.Errorf("Build users#selectUser: %v", err)
+	}
+	if _, _, err := dq.Build("orders#selectOrder", p); err != nil {
+		t.Errorf("Build orders#selectOrder: %v", err)
 	}
 }

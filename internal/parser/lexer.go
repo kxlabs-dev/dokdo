@@ -5,13 +5,13 @@ import "strings"
 type TokenType int
 
 const (
-	TAG_OPEN    TokenType = iota
-	TAG_CLOSE             // </>
-	PARAM_REF             // set:{ paramName }
-	EXPR_OPEN             // [[
-	EXPR_CLOSE            // ]]
-	BIND                  // #{ path }
-	RAW                   // ${ path }
+	TAG_OPEN   TokenType = iota
+	TAG_CLOSE            // </>
+	PARAM_REF            // set:{ paramName }
+	EXPR_OPEN            // [[
+	EXPR_CLOSE           // ]]
+	BIND                 // #{ path }
+	RAW                  // ${ path }
 	SQL_TEXT
 	WHERE_TAG   // <where>
 	ESCAPE      // \< \> \<= \>= !=
@@ -233,7 +233,7 @@ func (l *Lexer) readParamRef() (string, *ParseError) {
 			break
 		}
 		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-			(ch >= '0' && ch <= '9') || ch == '_' || ch == '.' || ch == '#' || ch == '-' {
+			(ch >= '0' && ch <= '9') || ch == '_' || ch == '.' || ch == '#' || ch == '-' || ch == '/' {
 			l.pos++
 		} else {
 			return "", l.makeError("invalid character in set:{} param reference")
