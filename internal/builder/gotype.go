@@ -9,11 +9,15 @@ import (
 )
 
 type FieldInfo struct {
-	Name        string
-	TypeStr     string
-	Nullable    bool
-	IsAnonSlice bool
-	AnonFields  []FieldInfo
+	Name           string
+	TypeStr        string
+	Nullable       bool
+	IsNamedSlice   bool
+	SliceElemType  string
+	SliceFields    []FieldInfo
+	IsNamedStruct  bool
+	StructElemType string
+	StructFields   []FieldInfo
 }
 
 type TypeInfo struct {
@@ -29,36 +33,114 @@ var goPrimitives = map[string]bool{
 	"error": true,
 }
 
-func extractAnonStructFields(st *ast.StructType) []FieldInfo {
+func buildFields(st *ast.StructType, localTypes map[string]*ast.StructType, visiting map[string]bool, path []string) ([]FieldInfo, error) {
 	var fields []FieldInfo
 	for _, f := range st.Fields.List {
 		if len(f.Names) == 0 {
 			continue
 		}
-		typeStr := exprToTypeStr(f.Type)
-		for _, name := range f.Names {
-			if !ast.IsExported(name.Name) {
+		for _, nameIdent := range f.Names {
+			if !ast.IsExported(nameIdent.Name) {
 				continue
 			}
-			fields = append(fields, FieldInfo{
-				Name:     name.Name,
-				TypeStr:  typeStr,
-				Nullable: strings.HasPrefix(typeStr, "*"),
-			})
+			fi, err := resolveExpr(nameIdent.Name, f.Type, false, localTypes, visiting, path)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, fi)
 		}
 	}
-	return fields
+	return fields, nil
+}
+
+func resolveExpr(name string, expr ast.Expr, nullable bool, localTypes map[string]*ast.StructType, visiting map[string]bool, path []string) (FieldInfo, error) {
+	switch e := expr.(type) {
+	case *ast.StarExpr:
+		if nullable {
+			return FieldInfo{}, fmt.Errorf("field '%s': pointer to pointer (**T) is not supported.", name)
+		}
+		return resolveExpr(name, e.X, true, localTypes, visiting, path)
+
+	case *ast.ArrayType:
+		if _, ok := e.Elt.(*ast.StructType); ok {
+			return FieldInfo{}, fmt.Errorf(
+				"field '%s': anonymous struct slice is not allowed. Use named struct instead.", name)
+		}
+		ident, ok := e.Elt.(*ast.Ident)
+		if !ok {
+			return FieldInfo{}, fmt.Errorf("field '%s': unsupported array element type.", name)
+		}
+		if goPrimitives[ident.Name] {
+			return FieldInfo{Name: name, TypeStr: "[]" + ident.Name, Nullable: nullable}, nil
+		}
+		st, ok := localTypes[ident.Name]
+		if !ok {
+			return FieldInfo{}, fmt.Errorf(
+				"field '%s' uses unsupported type '[]%s'. Use named struct in the same file.",
+				name, ident.Name)
+		}
+		newPath := append(path, ident.Name)
+		if visiting[ident.Name] {
+			return FieldInfo{}, fmt.Errorf("circular reference detected: %s",
+				strings.Join(newPath, " → "))
+		}
+		visiting[ident.Name] = true
+		sliceFields, err := buildFields(st, localTypes, visiting, newPath)
+		delete(visiting, ident.Name)
+		if err != nil {
+			return FieldInfo{}, err
+		}
+		return FieldInfo{
+			Name: name, IsNamedSlice: true,
+			SliceElemType: ident.Name, SliceFields: sliceFields, Nullable: nullable,
+		}, nil
+
+	case *ast.Ident:
+		if goPrimitives[e.Name] {
+			return FieldInfo{Name: name, TypeStr: e.Name, Nullable: nullable}, nil
+		}
+		st, ok := localTypes[e.Name]
+		if !ok {
+			return FieldInfo{}, fmt.Errorf(
+				"field '%s' uses unsupported type '%s'. Use named struct in the same file.",
+				name, e.Name)
+		}
+		newPath := append(path, e.Name)
+		if visiting[e.Name] {
+			return FieldInfo{}, fmt.Errorf("circular reference detected: %s",
+				strings.Join(newPath, " → "))
+		}
+		visiting[e.Name] = true
+		structFields, err := buildFields(st, localTypes, visiting, newPath)
+		delete(visiting, e.Name)
+		if err != nil {
+			return FieldInfo{}, err
+		}
+		return FieldInfo{
+			Name:           name,
+			IsNamedStruct:  true,
+			StructElemType: e.Name,
+			StructFields:   structFields,
+			Nullable:       nullable,
+		}, nil
+
+	case *ast.MapType:
+		return FieldInfo{}, fmt.Errorf("field '%s' uses unsupported type 'map'.", name)
+
+	default:
+		return FieldInfo{Name: name, TypeStr: exprToTypeStr(expr), Nullable: nullable}, nil
+	}
 }
 
 func ParseGoFile(path string) (map[string]*TypeInfo, error) {
-	result := make(map[string]*TypeInfo)
-
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
 		return nil, err
 	}
 
+	// Pass 1: 파일 내 exported struct 타입 수집 (필드 처리 없음)
+	localTypes := make(map[string]*ast.StructType)
 	for _, decl := range f.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok {
@@ -69,72 +151,27 @@ func ParseGoFile(path string) (map[string]*TypeInfo, error) {
 			if !ok {
 				continue
 			}
-			structType, ok := typeSpec.Type.(*ast.StructType)
+			st, ok := typeSpec.Type.(*ast.StructType)
 			if !ok {
 				continue
 			}
 			if !ast.IsExported(typeSpec.Name.Name) {
 				continue
 			}
-
-			info := &TypeInfo{Name: typeSpec.Name.Name}
-			for _, field := range structType.Fields.List {
-				if len(field.Names) == 0 {
-					continue
-				}
-
-				if arrType, ok := field.Type.(*ast.ArrayType); ok {
-					if anonSt, ok := arrType.Elt.(*ast.StructType); ok {
-						anonFields := extractAnonStructFields(anonSt)
-						for _, name := range field.Names {
-							if !ast.IsExported(name.Name) {
-								continue
-							}
-							info.Fields = append(info.Fields, FieldInfo{
-								Name:        name.Name,
-								IsAnonSlice: true,
-								AnonFields:  anonFields,
-							})
-						}
-						continue
-					}
-					if ident, ok := arrType.Elt.(*ast.Ident); ok && !goPrimitives[ident.Name] {
-						for _, name := range field.Names {
-							if ast.IsExported(name.Name) {
-								return nil, fmt.Errorf(
-									"field '%s' uses unsupported type '[]%s'. Use anonymous struct slice '[]struct{...}' instead.",
-									name.Name, ident.Name,
-								)
-							}
-						}
-						continue
-					}
-				} else if _, ok := field.Type.(*ast.MapType); ok {
-					for _, name := range field.Names {
-						if ast.IsExported(name.Name) {
-							return nil, fmt.Errorf(
-								"field '%s' uses unsupported type 'map'. Use anonymous struct slice '[]struct{...}' instead.",
-								name.Name,
-							)
-						}
-					}
-					continue
-				}
-
-				typeStr := exprToTypeStr(field.Type)
-				for _, name := range field.Names {
-					if !ast.IsExported(name.Name) {
-						continue
-					}
-					info.Fields = append(info.Fields, FieldInfo{
-						Name:     name.Name,
-						TypeStr:  typeStr,
-						Nullable: strings.HasPrefix(typeStr, "*"),
-					})
-				}
-			}
-			result[info.Name] = info
+			localTypes[typeSpec.Name.Name] = st
 		}
+	}
+
+	// Pass 2: 각 타입의 필드를 재귀 처리
+	result := make(map[string]*TypeInfo)
+	for typeName, st := range localTypes {
+		visiting := map[string]bool{typeName: true}
+		path := []string{typeName}
+		fields, err := buildFields(st, localTypes, visiting, path)
+		if err != nil {
+			return nil, err
+		}
+		result[typeName] = &TypeInfo{Name: typeName, Fields: fields}
 	}
 
 	return result, nil

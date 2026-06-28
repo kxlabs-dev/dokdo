@@ -77,8 +77,8 @@ type privateParams struct {
 			wantErr: true,
 		},
 		{
-			// []CustomType → error 반환
-			name:    "unsupported-custom-slice",
+			// []NamedType → 같은 파일에 선언된 경우 허용
+			name:    "named-struct-slice-allowed",
 			relPath: "bad.go",
 			content: `package query
 type CustomField struct{ Val string }
@@ -86,7 +86,11 @@ type BadParams struct {
 	Items []CustomField
 }
 `,
-			wantErr: true,
+			wantErr: false,
+			wantTypes: map[string][]string{
+				"CustomField": {"Val"},
+				"BadParams":   {"Items"},
+			},
 		},
 		{
 			// map 필드 → error 반환

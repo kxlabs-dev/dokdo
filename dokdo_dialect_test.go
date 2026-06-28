@@ -146,10 +146,10 @@ func TestDialect_AllFour(t *testing.T) {
 			t.Run("updateOrderStatus_FOR_then_bind", func(t *testing.T) {
 				params := struct {
 					Id      int64
-					Updates []struct{ Key, Value string }
+					Updates []UpdateField
 				}{
 					Id:      int64(99),
-					Updates: []struct{ Key, Value string }{{"name", "shipped"}, {"grade", "S"}},
+					Updates: []UpdateField{{"name", "shipped"}, {"grade", "S"}},
 				}
 
 				sql, args, err := dq.Build("orders#updateOrderStatus", params)

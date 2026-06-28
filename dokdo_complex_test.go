@@ -7,8 +7,49 @@ import (
 	"github.com/kxlabs-dev/dokdo"
 )
 
+type FilterField struct{ Key, Value string }
+type UpdateField struct{ Key, Value string }
+type OrderField struct {
+	Name   string
+	Amount int64
+}
+type CaseField struct{ Column, Condition, Result string }
+type ConditionField struct{ Key, Value string }
+type OrderByField struct{ Key, Value string }
+type AliasField struct{ Key, Value string }
+
+// Q16-Q19
+type BulkTypeParams struct {
+	Type   string
+	Orders []OrderField
+}
+type StatusItem struct {
+	Id     int64
+	Status string
+}
+type ForSwitchParams struct{ Items []StatusItem }
+type IdGroup struct {
+	Type string
+	Ids  []int64
+}
+type GroupFilterParams struct{ Groups []IdGroup }
+type AddressField struct{ City, Country string }
+type DetailItem struct {
+	Score   int64
+	Address AddressField
+}
+type DrillParams struct{ Items []DetailItem }
+
 const ordersGo = `
 package query
+
+type FilterField    struct { Key, Value string }
+type UpdateField    struct { Key, Value string }
+type OrderField     struct { Name string; Amount int64 }
+type CaseField      struct { Column, Condition, Result string }
+type ConditionField struct { Key, Value string }
+type OrderByField   struct { Key, Value string }
+type AliasField     struct { Key, Value string }
 
 // Q1
 type SearchParams struct {
@@ -17,10 +58,7 @@ type SearchParams struct {
 	Grade     *string
 	Keyword   *string
 	StartDate *string
-	Filters   []struct {
-		Key   string
-		Value string
-	}
+	Filters   []FilterField
 }
 
 // Q2
@@ -34,18 +72,12 @@ type AdvancedParams struct {
 // Q3
 type UpdateParams struct {
 	Id      int64
-	Updates []struct {
-		Key   string
-		Value string
-	}
+	Updates []UpdateField
 }
 
 // Q4
 type BulkParams struct {
-	Orders []struct {
-		Name   string
-		Amount int64
-	}
+	Orders []OrderField
 }
 
 // Q5
@@ -60,23 +92,13 @@ type UnionParams struct {
 
 // Q7
 type CaseParams struct {
-	Cases []struct {
-		Column    string
-		Condition string
-		Result    string
-	}
+	Cases []CaseField
 }
 
 // Q8
 type DynamicParams struct {
-	Conditions []struct {
-		Key   string
-		Value string
-	}
-	OrderBy []struct {
-		Key   string
-		Value string
-	}
+	Conditions []ConditionField
+	OrderBy    []OrderByField
 }
 
 // Q9
@@ -98,10 +120,7 @@ type DeleteParams struct {
 
 // Q12
 type AliasParams struct {
-	Columns []struct {
-		Key   string
-		Value string
-	}
+	Columns []AliasField
 }
 
 // Q13
@@ -119,10 +138,7 @@ type JoinParams struct {
 	JoinCategory *bool
 	JoinShipping *bool
 	JoinPayment  *bool
-	Conditions   []struct {
-		Key   string
-		Value string
-	}
+	Conditions   []ConditionField
 }
 
 // Q15
@@ -131,6 +147,43 @@ type GroupParams struct {
 	MinScore *int
 	MinCount *int
 	MinTotal *int64
+}
+
+// Q16
+type BulkTypeParams struct {
+	Type   string
+	Orders []OrderField
+}
+
+// Q17
+type StatusItem struct {
+	Id     int64
+	Status string
+}
+type ForSwitchParams struct {
+	Items []StatusItem
+}
+
+// Q18
+type IdGroup struct {
+	Type string
+	Ids  []int64
+}
+type GroupFilterParams struct {
+	Groups []IdGroup
+}
+
+// Q19
+type AddressField struct {
+	City    string
+	Country string
+}
+type DetailItem struct {
+	Score   int64
+	Address AddressField
+}
+type DrillParams struct {
+	Items []DetailItem
 }
 `
 
@@ -346,6 +399,68 @@ const ordersKX = `
     }]]
   </>
 
+  <bulkInsertByType set:{"orders#BulkTypeParams"}>
+    [[ switch (type) :{
+      case ("bulk") :{
+        INSERT INTO orders (name, amount) VALUES
+        [[ for order in orders :{
+          (#{order.Name}, #{order.Amount}),
+        }]]
+      }
+      default :{
+        SELECT 1
+      }
+    }]]
+  </>
+
+  <selectByItemStatus set:{"orders#ForSwitchParams"}>
+    SELECT * FROM orders WHERE id IN (
+    [[ for item in items :{
+      [[ switch (item.Status) :{
+        case ("active") :{
+          #{item.Id},
+        }
+        default :{
+          0,
+        }
+      }]]
+    }]]
+    )
+  </>
+
+  <selectByGroup set:{"orders#GroupFilterParams"}>
+    SELECT * FROM orders
+    <where>
+    [[ for group in groups :{
+      [[ switch (group.Type) :{
+        case ("include") :{
+          AND id IN (
+            [[ for id in group.Ids :{
+              #{id},
+            }]]
+          )
+        }
+        default :{
+          AND 1=1
+        }
+      }]]
+    }]]
+    </>
+  </>
+
+  <selectWithDrilling set:{"orders#DrillParams"}>
+    SELECT * FROM orders WHERE id IN (
+    [[ for item in items :{
+      #{item.Score},
+    }]]
+    )
+    AND city IN (
+    [[ for item in items :{
+      #{item.Address.City},
+    }]]
+    )
+  </>
+
 </>
 `
 
@@ -370,7 +485,7 @@ func TestOrders_SearchOrders(t *testing.T) {
 		Grade     *string
 		Keyword   *string
 		StartDate *string
-		Filters   []struct{ Key, Value string }
+		Filters   []FilterField
 	}
 
 	t.Run("IdsActive", func(t *testing.T) {
@@ -380,7 +495,7 @@ func TestOrders_SearchOrders(t *testing.T) {
 		params := SearchParams{
 			Status:    &active,
 			Ids:       []int64{1, 2, 3},
-			Filters:   []struct{ Key, Value string }{{"category", "online"}},
+			Filters:   []FilterField{{"category", "online"}},
 			Keyword:   &keyword,
 			StartDate: &startDate,
 		}
@@ -442,7 +557,7 @@ func TestOrders_SearchOrders(t *testing.T) {
 		params := SearchParams{
 			Status:  &active,
 			Grade:   &grade,
-			Filters: []struct{ Key, Value string }{},
+			Filters: []FilterField{},
 		}
 		sql, args, err := dq.Build("orders#searchOrders", params)
 		if err != nil {
@@ -467,7 +582,7 @@ func TestOrders_SearchOrders(t *testing.T) {
 		active := "active"
 		params := SearchParams{
 			Status:  &active,
-			Filters: []struct{ Key, Value string }{},
+			Filters: []FilterField{},
 		}
 		sql, args, err := dq.Build("orders#searchOrders", params)
 		if err != nil {
@@ -579,13 +694,13 @@ func TestOrders_UpdateOrderStatus(t *testing.T) {
 
 	type UpdateParams struct {
 		Id      int64
-		Updates []struct{ Key, Value string }
+		Updates []UpdateField
 	}
 
 	t.Run("WithUpdates", func(t *testing.T) {
 		params := UpdateParams{
 			Id:      int64(1),
-			Updates: []struct{ Key, Value string }{{"name", "done"}, {"grade", "A"}},
+			Updates: []UpdateField{{"name", "done"}, {"grade", "A"}},
 		}
 		sql, args, err := dq.Build("orders#updateOrderStatus", params)
 		if err != nil {
@@ -611,7 +726,7 @@ func TestOrders_UpdateOrderStatus(t *testing.T) {
 	t.Run("EmptyUpdates", func(t *testing.T) {
 		params := UpdateParams{
 			Id:      int64(1),
-			Updates: []struct{ Key, Value string }{},
+			Updates: []UpdateField{},
 		}
 		sql, args, err := dq.Build("orders#updateOrderStatus", params)
 		if err != nil {
@@ -637,18 +752,12 @@ func TestOrders_BulkInsertOrders(t *testing.T) {
 	dq := setupOrders(t)
 
 	type BulkParams struct {
-		Orders []struct {
-			Name   string
-			Amount int64
-		}
+		Orders []OrderField
 	}
 
 	t.Run("ThreeRows", func(t *testing.T) {
 		params := BulkParams{
-			Orders: []struct {
-				Name   string
-				Amount int64
-			}{
+			Orders: []OrderField{
 				{"orderA", int64(100)},
 				{"orderB", int64(200)},
 				{"orderC", int64(300)},
@@ -682,12 +791,7 @@ func TestOrders_BulkInsertOrders(t *testing.T) {
 	})
 
 	t.Run("EmptyOrders", func(t *testing.T) {
-		params := BulkParams{
-			Orders: []struct {
-				Name   string
-				Amount int64
-			}{},
-		}
+		params := BulkParams{Orders: []OrderField{}}
 		_, _, err := dq.Build("orders#bulkInsertOrders", params)
 		if err != nil {
 			t.Fatalf("Build: %v", err)
@@ -776,12 +880,12 @@ func TestOrders_SelectCaseWhen(t *testing.T) {
 	dq := setupOrders(t)
 
 	type CaseParams struct {
-		Cases []struct{ Column, Condition, Result string }
+		Cases []CaseField
 	}
 
 	t.Run("TwoCases", func(t *testing.T) {
 		params := CaseParams{
-			Cases: []struct{ Column, Condition, Result string }{
+			Cases: []CaseField{
 				{"grade", "A", "우수"},
 				{"grade", "B", "보통"},
 			},
@@ -822,14 +926,14 @@ func TestOrders_SelectDynamicOrder(t *testing.T) {
 	dq := setupOrders(t)
 
 	type DynamicParams struct {
-		Conditions []struct{ Key, Value string }
-		OrderBy    []struct{ Key, Value string }
+		Conditions []ConditionField
+		OrderBy    []OrderByField
 	}
 
 	t.Run("WithCondition", func(t *testing.T) {
 		params := DynamicParams{
-			Conditions: []struct{ Key, Value string }{{"created_at", "active"}},
-			OrderBy:    []struct{ Key, Value string }{{"created_at", "DESC"}},
+			Conditions: []ConditionField{{"created_at", "active"}},
+			OrderBy:    []OrderByField{{"created_at", "DESC"}},
 		}
 		sql, args, err := dq.Build("orders#selectDynamicOrder", params)
 		if err != nil {
@@ -854,8 +958,8 @@ func TestOrders_SelectDynamicOrder(t *testing.T) {
 
 	t.Run("EmptyConditions", func(t *testing.T) {
 		params := DynamicParams{
-			Conditions: []struct{ Key, Value string }{},
-			OrderBy:    []struct{ Key, Value string }{{"id", "ASC"}},
+			Conditions: []ConditionField{},
+			OrderBy:    []OrderByField{{"id", "ASC"}},
 		}
 		sql, _, err := dq.Build("orders#selectDynamicOrder", params)
 		if err != nil {
@@ -1070,12 +1174,12 @@ func TestOrders_SelectWithAlias(t *testing.T) {
 	dq := setupOrders(t)
 
 	type AliasParams struct {
-		Columns []struct{ Key, Value string }
+		Columns []AliasField
 	}
 
 	t.Run("TwoAliases", func(t *testing.T) {
 		params := AliasParams{
-			Columns: []struct{ Key, Value string }{
+			Columns: []AliasField{
 				{"order_id", "oid"},
 				{"order_name", "oname"},
 			},
@@ -1189,7 +1293,7 @@ func TestOrders_SelectMultiJoin(t *testing.T) {
 		JoinCategory *bool
 		JoinShipping *bool
 		JoinPayment  *bool
-		Conditions   []struct{ Key, Value string }
+		Conditions   []ConditionField
 	}
 
 	bTrue := true
@@ -1197,7 +1301,7 @@ func TestOrders_SelectMultiJoin(t *testing.T) {
 	t.Run("JoinUser", func(t *testing.T) {
 		params := JoinParams{
 			JoinUser:   &bTrue,
-			Conditions: []struct{ Key, Value string }{{"o.status", "active"}},
+			Conditions: []ConditionField{{"o.status", "active"}},
 		}
 		sql, args, err := dq.Build("orders#selectMultiJoin", params)
 		if err != nil {
@@ -1223,7 +1327,7 @@ func TestOrders_SelectMultiJoin(t *testing.T) {
 	t.Run("JoinPayment", func(t *testing.T) {
 		params := JoinParams{
 			JoinPayment: &bTrue,
-			Conditions:  []struct{ Key, Value string }{},
+			Conditions:  []ConditionField{},
 		}
 		sql, _, err := dq.Build("orders#selectMultiJoin", params)
 		if err != nil {
@@ -1239,7 +1343,7 @@ func TestOrders_SelectMultiJoin(t *testing.T) {
 
 	t.Run("NoJoin", func(t *testing.T) {
 		params := JoinParams{
-			Conditions: []struct{ Key, Value string }{},
+			Conditions: []ConditionField{},
 		}
 		sql, _, err := dq.Build("orders#selectMultiJoin", params)
 		if err != nil {
@@ -1324,6 +1428,128 @@ func TestOrders_SelectComplexGroup(t *testing.T) {
 		}
 		if len(args) != 1 {
 			t.Errorf("args length: got %d, want 1", len(args))
+		}
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Q16 — bulkInsertByType (switch → for)
+// ─────────────────────────────────────────────────────────────────
+
+func TestOrders_BulkInsertByType(t *testing.T) {
+	dq := setupOrders(t)
+
+	t.Run("BulkType", func(t *testing.T) {
+		params := BulkTypeParams{
+			Type:   "bulk",
+			Orders: []OrderField{{"itemA", int64(10)}, {"itemB", int64(20)}},
+		}
+		sql, _, err := dq.Build("orders#bulkInsertByType", params)
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		if !strings.Contains(sql, "INSERT INTO") {
+			t.Errorf("expected INSERT INTO — sql: %q", sql)
+		}
+	})
+
+	t.Run("DefaultType", func(t *testing.T) {
+		params := BulkTypeParams{
+			Type:   "other",
+			Orders: []OrderField{},
+		}
+		sql, _, err := dq.Build("orders#bulkInsertByType", params)
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		if !strings.Contains(sql, "SELECT 1") {
+			t.Errorf("expected SELECT 1 — sql: %q", sql)
+		}
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Q17 — selectByItemStatus (for → switch)
+// ─────────────────────────────────────────────────────────────────
+
+func TestOrders_SelectByItemStatus(t *testing.T) {
+	dq := setupOrders(t)
+
+	t.Run("MixedStatus", func(t *testing.T) {
+		params := ForSwitchParams{
+			Items: []StatusItem{
+				{Id: int64(1), Status: "active"},
+				{Id: int64(2), Status: "inactive"},
+			},
+		}
+		sql, _, err := dq.Build("orders#selectByItemStatus", params)
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		if !strings.Contains(sql, "WHERE id IN") {
+			t.Errorf("expected WHERE id IN — sql: %q", sql)
+		}
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Q18 — selectByGroup (for → switch → for)
+// ─────────────────────────────────────────────────────────────────
+
+func TestOrders_SelectByGroup(t *testing.T) {
+	dq := setupOrders(t)
+
+	t.Run("IncludeGroup", func(t *testing.T) {
+		params := GroupFilterParams{
+			Groups: []IdGroup{
+				{Type: "include", Ids: []int64{1, 2, 3}},
+			},
+		}
+		sql, _, err := dq.Build("orders#selectByGroup", params)
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		if !strings.Contains(sql, "id IN") {
+			t.Errorf("expected id IN — sql: %q", sql)
+		}
+	})
+
+	t.Run("DefaultGroup", func(t *testing.T) {
+		params := GroupFilterParams{
+			Groups: []IdGroup{
+				{Type: "exclude", Ids: []int64{1}},
+			},
+		}
+		sql, _, err := dq.Build("orders#selectByGroup", params)
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		if !strings.Contains(sql, "1=1") {
+			t.Errorf("expected 1=1 — sql: %q", sql)
+		}
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Q19 — selectWithDrilling (struct 드릴링)
+// ─────────────────────────────────────────────────────────────────
+
+func TestOrders_SelectWithDrilling(t *testing.T) {
+	dq := setupOrders(t)
+
+	t.Run("DrillAddress", func(t *testing.T) {
+		params := DrillParams{
+			Items: []DetailItem{
+				{Score: int64(90), Address: AddressField{City: "Seoul", Country: "KR"}},
+				{Score: int64(80), Address: AddressField{City: "Busan", Country: "KR"}},
+			},
+		}
+		sql, _, err := dq.Build("orders#selectWithDrilling", params)
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		if !strings.Contains(sql, "city IN") {
+			t.Errorf("expected city IN — sql: %q", sql)
 		}
 	})
 }

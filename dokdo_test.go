@@ -228,12 +228,14 @@ func TestForMapUpdate(t *testing.T) {
 	writeGo(t, dir, "users.go", `
 package query
 
+type UpdateItem struct {
+	Key   string
+	Value string
+}
+
 type UpdateParams struct {
 	Id      int64
-	Updates []struct {
-		Key   string
-		Value string
-	}
+	Updates []UpdateItem
 }
 `)
 	writeKX(t, dir, "users.kx", `
@@ -319,11 +321,13 @@ func TestWhereWithForLoop(t *testing.T) {
 	writeGo(t, dir, "users.go", `
 package query
 
+type FilterItem struct {
+	Key   string
+	Value string
+}
+
 type FilterParams struct {
-	Filters []struct {
-		Key   string
-		Value string
-	}
+	Filters []FilterItem
 }
 `)
 	writeKX(t, dir, "users.kx", `

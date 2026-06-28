@@ -49,33 +49,35 @@ func ValidateParams(params interface{}, info *TypeInfo) error {
 			continue
 		}
 
-		if field.IsAnonSlice {
+		if field.IsNamedSlice {
 			if goFieldType.Kind() != reflect.Slice {
-				return &TypeMismatchError{Field: field.Name, Expected: "[]struct", Got: goFieldType.String()}
+				return &TypeMismatchError{Field: field.Name, Expected: "[]" + field.SliceElemType, Got: goFieldType.String()}
 			}
 			elemType := goFieldType.Elem()
 			if elemType.Kind() != reflect.Struct {
-				return &TypeMismatchError{Field: field.Name, Expected: "[]struct", Got: "[]" + elemType.String()}
+				return &TypeMismatchError{Field: field.Name, Expected: "[]" + field.SliceElemType, Got: "[]" + elemType.String()}
 			}
-			for _, anonField := range field.AnonFields {
-				for i := 0; i < elemType.NumField(); i++ {
-					ef := elemType.Field(i)
-					if anonField.Name == ef.Name {
-						if ef.Type.String() != anonField.TypeStr {
-							return &TypeMismatchError{
-								Field:    field.Name + "." + anonField.Name,
-								Expected: anonField.TypeStr,
-								Got:      ef.Type.String(),
-							}
-						}
-						break
-					}
-				}
+			if err := validateStructFields(field.Name, elemType, field.SliceFields); err != nil {
+				return err
 			}
 			continue
 		}
 
-		if goFieldType.String() != field.TypeStr {
+		if field.IsNamedStruct {
+			if goFieldType.Kind() != reflect.Struct {
+				return &TypeMismatchError{Field: field.Name, Expected: field.StructElemType, Got: goFieldType.String()}
+			}
+			if err := validateStructFields(field.Name, goFieldType, field.StructFields); err != nil {
+				return err
+			}
+			continue
+		}
+
+		cmpType := goFieldType
+		if field.Nullable && cmpType.Kind() == reflect.Ptr {
+			cmpType = cmpType.Elem()
+		}
+		if cmpType.String() != field.TypeStr {
 			return &TypeMismatchError{Field: field.Name, Expected: field.TypeStr, Got: goFieldType.String()}
 		}
 
@@ -89,5 +91,52 @@ func ValidateParams(params interface{}, info *TypeInfo) error {
 		}
 	}
 
+	return nil
+}
+
+func validateStructFields(prefix string, rt reflect.Type, fields []FieldInfo) error {
+	for _, sf := range fields {
+		var found bool
+		var sfType reflect.Type
+		for i := 0; i < rt.NumField(); i++ {
+			if strings.EqualFold(sf.Name, rt.Field(i).Name) {
+				found = true
+				sfType = rt.Field(i).Type
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		if sf.IsNamedSlice {
+			if sfType.Kind() != reflect.Slice {
+				return &TypeMismatchError{Field: prefix + "." + sf.Name, Expected: "[]" + sf.SliceElemType, Got: sfType.String()}
+			}
+			elemType := sfType.Elem()
+			if elemType.Kind() != reflect.Struct {
+				return &TypeMismatchError{Field: prefix + "." + sf.Name, Expected: "[]" + sf.SliceElemType, Got: "[]" + elemType.String()}
+			}
+			if err := validateStructFields(prefix+"."+sf.Name, elemType, sf.SliceFields); err != nil {
+				return err
+			}
+			continue
+		}
+		if sf.IsNamedStruct {
+			if sfType.Kind() != reflect.Struct {
+				return &TypeMismatchError{Field: prefix + "." + sf.Name, Expected: sf.StructElemType, Got: sfType.String()}
+			}
+			if err := validateStructFields(prefix+"."+sf.Name, sfType, sf.StructFields); err != nil {
+				return err
+			}
+			continue
+		}
+		cmpType := sfType
+		if sf.Nullable && cmpType.Kind() == reflect.Ptr {
+			cmpType = cmpType.Elem()
+		}
+		if cmpType.String() != sf.TypeStr {
+			return &TypeMismatchError{Field: prefix + "." + sf.Name, Expected: sf.TypeStr, Got: sfType.String()}
+		}
+	}
 	return nil
 }
